@@ -229,7 +229,6 @@ wdb_t * wdb_open_agent2(int agent_id) {
     char path[PATH_MAX + 1];
     sqlite3 * db;
     wdb_t * wdb = NULL;
-    wdb_t * new_wdb = NULL;
 
     snprintf(sagent_id, sizeof(sagent_id), "%03d", agent_id);
 
@@ -269,9 +268,8 @@ wdb_t * wdb_open_agent2(int agent_id) {
         wdb = wdb_init(db, sagent_id);
         wdb_pool_append(wdb);
 
-        if (new_wdb = wdb_upgrade(wdb), new_wdb != wdb) {
+        if (wdb_upgrade(&wdb)) {
             // If I had to generate backup and change DB
-            wdb = new_wdb;
             wdb_pool_append(wdb);
         }
     }

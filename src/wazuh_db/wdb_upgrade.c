@@ -20,7 +20,7 @@ static int wdb_adjust_upgrade(wdb_t *wdb, int upgrade_step);
 static int wdb_adjust_v4(wdb_t *wdb);
 
 // Upgrade agent database to last version
-wdb_t * wdb_upgrade(wdb_t *wdb) {
+bool wdb_upgrade(wdb_t **wdb) {
     const char * UPDATES[] = {
         schema_upgrade_v1_sql,
         schema_upgrade_v2_sql,
@@ -32,9 +32,9 @@ wdb_t * wdb_upgrade(wdb_t *wdb) {
     char db_version[OS_SIZE_256 + 2];
     int version = 0;
 
-    switch (wdb_metadata_get_entry(wdb, "db_version", db_version)) {
+    switch (wdb_metadata_get_entry(*wdb, "db_version", db_version)) {
     case -1:
-        return wdb;
+        return 0;
 
     case 0:
         break;
@@ -43,34 +43,33 @@ wdb_t * wdb_upgrade(wdb_t *wdb) {
         version = atoi(db_version);
 
         if (version < 0) {
-            merror("DB(%s): Incorrect database version: %d", wdb->id, version);
-            return wdb;
+            merror("DB(%s): Incorrect database version: %d", (*wdb)->id, version);
+            return 0;
         }
     }
 
     for (unsigned i = version; i < sizeof(UPDATES) / sizeof(char *); i++) {
-        mdebug2("Updating database '%s' to version %d", wdb->id, i + 1);
+        mdebug2("Updating database '%s' to version %d", (*wdb)->id, i + 1);
 
-        if (wdb_sql_exec(wdb, UPDATES[i]) == -1 || wdb_adjust_upgrade(wdb, i)) {
-            wdb_t * new_wdb = wdb_backup(wdb, version);
-            return new_wdb ? new_wdb : wdb;
+        if (wdb_sql_exec(*wdb, UPDATES[i]) == -1 || wdb_adjust_upgrade(*wdb, i)) {
+            if (wdb_backup(wdb, version) == 0)
+                return 1;
         }
     }
 
-    return wdb;
+    return 0;
 }
 
 // Create backup and generate an emtpy DB
-wdb_t * wdb_backup(wdb_t *wdb, int version) {
+int wdb_backup(wdb_t **wdb, int version) {
     char path[PATH_MAX];
     char * sagent_id;
-    wdb_t * new_wdb = NULL;
     sqlite3 * db;
 
-    os_strdup(wdb->id, sagent_id),
+    os_strdup((*wdb)->id, sagent_id),
     snprintf(path, PATH_MAX, "%s/%s.db", WDB2_DIR, sagent_id);
 
-    if (wdb_close(wdb, TRUE) != -1) {
+    if (wdb_close(*wdb, TRUE) != -1) {
         if (wdb_create_backup(sagent_id, version) != -1) {
             mwarn("Creating DB backup and create clear DB for agent: '%s'", sagent_id);
             unlink(path);
@@ -79,24 +78,26 @@ wdb_t * wdb_backup(wdb_t *wdb, int version) {
             if (wdb_create_agent_db2(sagent_id) < 0) {
                 merror("Couldn't create SQLite database for agent '%s'", sagent_id);
                 free(sagent_id);
-                return NULL;
+                return -1;
             }
 
             if (sqlite3_open_v2(path, &db, SQLITE_OPEN_READWRITE, NULL)) {
-                merror("Can't open SQLite backup database '%s': %s", path, sqlite3_errmsg(wdb->db));
-                sqlite3_close_v2(wdb->db);
+                merror("Can't open SQLite backup database '%s': %s", path, sqlite3_errmsg((*wdb)->db));
+                sqlite3_close_v2((*wdb)->db);
                 free(sagent_id);
-                return NULL;
+                return -1;
             }
 
-            new_wdb = wdb_init(db, sagent_id);
+            *wdb = wdb_init(db, sagent_id);
+    	    free(sagent_id);
+    	    return 0;
         }
     } else {
         merror("Couldn't create SQLite database backup for agent '%s'", sagent_id);
     }
 
     free(sagent_id);
-    return new_wdb;
+    return -1;
 }
 
 

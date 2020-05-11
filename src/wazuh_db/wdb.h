@@ -583,10 +583,10 @@ int wdb_scan_info_get(wdb_t * wdb, const char *module, char *field, long *output
 int wdb_scan_info_fim_checks_control (wdb_t * wdb, const char *last_check);
 
 // Upgrade agent database to last version
-wdb_t * wdb_upgrade(wdb_t *wdb);
+bool wdb_upgrade(wdb_t **wdb);
 
 // Create backup and generate an emtpy DB
-wdb_t * wdb_backup(wdb_t *wdb, int version);
+int wdb_backup(wdb_t **wdb, int version);
 
 /* Create backup for agent. Returns 0 on success or -1 on error. */
 int wdb_create_backup(const char * agent_id, int version);
